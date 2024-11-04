@@ -126,6 +126,95 @@ fn build_makedefs(b: *std.Build) !void {
     }
 }
 
+fn build_comp(
+    b: *std.Build,
+    src_files: []const []const u8,
+    input_files: []const []const u8,
+    comptime shortname: []const u8,
+    comptime longname: []const u8,
+) !void {
+    const src_paths = [_][]const u8{};
+    const include_paths = [_][]const u8{
+        "nethack/include",
+        "zig-out/include",
+    };
+    const libs = [_][]const u8{};
+
+    const yacc_cmd = &[_][]const u8{
+        "yacc",
+        "-d",
+        "nethack/util/" ++ shortname ++ "_comp.y",
+        "--header=zig-out/include/" ++ shortname ++ "_comp.h",
+        "-o",
+        "zig-out/util/" ++ shortname ++ "_yacc.c",
+    };
+    const lex_cmd = &[_][]const u8{
+        "lex",
+        "-o",
+        "zig-out/util/" ++ shortname ++ "_lex.c",
+        "nethack/util/" ++ shortname ++ "_comp.l",
+    };
+
+    const yacc = b.addSystemCommand(yacc_cmd);
+    const lex = b.addSystemCommand(lex_cmd);
+    for (makedefs_cmds) |cmd| {
+        yacc.step.dependOn(&cmd.step);
+        lex.step.dependOn(&cmd.step);
+    }
+
+    const comp = try build_c(
+        b,
+        shortname ++ "_comp",
+        src_files,
+        &src_paths,
+        &include_paths,
+        &libs,
+    );
+
+    const install = b.getInstallStep();
+    const comp_step = b.step(shortname ++ "_comp", "Run the " ++ longname ++ " compiler");
+    comp.step.dependOn(&yacc.step);
+    comp.step.dependOn(&lex.step);
+    for (input_files) |file| {
+        const cmd = b.addRunArtifact(comp);
+        cmd.addArg(std.fs.path.basename(file));
+        cmd.setCwd(b.path("zig-out/dat/"));
+        comp_step.dependOn(&cmd.step);
+        install.dependOn(&cmd.step);
+    }
+    install.dependOn(&comp.step);
+}
+
+fn build_lev_comp(b: *std.Build) !void {
+    const src_files = [_][]const u8{
+        "zig-out/util/lev_yacc.c",
+        "zig-out/util/lev_lex.c",
+        "nethack/util/lev_main.c",
+        "nethack/util/panic.c",
+        "nethack/src/alloc.c",
+        "nethack/src/drawing.c",
+        "nethack/src/decl.c",
+        "nethack/src/monst.c",
+        "nethack/src/objects.c",
+    };
+    const input_files = try find_all(b, "zig-out/dat/", ".des");
+    try build_comp(b, &src_files, input_files, "lev", "level");
+}
+
+fn build_dgn_comp(b: *std.Build) !void {
+    const src_files = [_][]const u8{
+        "zig-out/util/dgn_yacc.c",
+        "zig-out/util/dgn_lex.c",
+        "nethack/util/dgn_main.c",
+        "nethack/util/panic.c",
+        "nethack/src/alloc.c",
+    };
+    const input_files = [_][]const u8{
+        "dungeon.pdf",
+    };
+    try build_comp(b, &src_files, &input_files, "dgn", "dungeon");
+}
+
 fn build_nethack(b: *std.Build) !void {
     const src_paths = [_][]const u8{
         "nethack/src/",
@@ -175,6 +264,8 @@ pub fn build(b: *std.Build) !void {
     optimize = b.standardOptimizeOption(.{});
     try prepare(b);
     try build_makedefs(b);
+    try build_lev_comp(b);
+    try build_dgn_comp(b);
     try build_nethack(b);
     build_trihack(b);
 }
