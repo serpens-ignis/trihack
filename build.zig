@@ -126,6 +126,36 @@ fn build_makedefs(b: *std.Build) !void {
     }
 }
 
+fn build_nethack(b: *std.Build) !void {
+    const src_paths = [_][]const u8{
+        "nethack/src/",
+        "nethack/win/curses/",
+        "nethack/win/tty/",
+    };
+    const src_files = [_][]const u8{
+        "nethack/sys/unix/unixmain.c",
+        "nethack/sys/unix/unixunix.c",
+        "nethack/sys/share/posixregex.c",
+        "nethack/sys/share/unixtty.c",
+        "nethack/sys/share/ioctl.c",
+    };
+    const include_paths = [_][]const u8{
+        "nethack/include",
+        "nethack/win/curses",
+        "zig-out/include",
+    };
+    const libs = [_][]const u8{
+        "curses",
+    };
+    const nethack = try build_c(b, "nethack", &src_files, &src_paths, &include_paths, &libs);
+    const nethack_step = b.step("nethack", "Run nethack on the terminal");
+    const nethack_cmd = b.addRunArtifact(nethack);
+    nethack_step.dependOn(&nethack_cmd.step);
+    for (makedefs_cmds) |cmd| {
+        nethack.step.dependOn(&cmd.step);
+    }
+}
+
 fn build_trihack(b: *std.Build) void {
     const exe = b.addExecutable(.{
         .name = "trihack",
@@ -145,5 +175,6 @@ pub fn build(b: *std.Build) !void {
     optimize = b.standardOptimizeOption(.{});
     try prepare(b);
     try build_makedefs(b);
+    try build_nethack(b);
     build_trihack(b);
 }
